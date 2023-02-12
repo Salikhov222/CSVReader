@@ -4,6 +4,7 @@
 #include <string>
 #include <set>
 #include <regex>
+#include <stack>
 
 using namespace std;
 using Cell = pair<string, int>; // cell addres (name_col and num_row)
@@ -17,12 +18,14 @@ Formula parse_formula(string);
 void calculate_values(map<Cell, int>*, map<Cell, Formula>*);
 int calculate(int, int, char);
 void print_result(map<Cell, int>*, vector<string>*, vector<int>*);
+void add_to_set(string, set<string>*);
 
 
 int main(int argc, char *argv[]){
 	if (argc > 1){
 		string path = argv[1];
 		ifstream file (path); // open file to read
+
 		vector<string> columns; // vector for name columns
 		vector<int> rows;	// vector for number rows
 		map<Cell, int> values; // map-container for table values
@@ -38,6 +41,7 @@ int main(int argc, char *argv[]){
 			}
 			catch(const char *msg){
 				cout << msg << endl;
+				return 1;
 			}
 		}
 
@@ -57,6 +61,7 @@ void get_column_names(ifstream* f, vector<string>* v){
 		if there are no such elements or column names are entered incorrectly - exception output
 	*/
 	string temp, cols;
+	char ch;
 	size_t pos;
 	bool empty_cell = false;
 	set<string> columns;
@@ -64,7 +69,7 @@ void get_column_names(ifstream* f, vector<string>* v){
 	getline(*f, cols, '\n');	
 
 	if (cols.empty()){
-		throw "Empty line";
+		throw "Incorrect first line";
 	}
 
 	while(pos != string::npos){
@@ -82,8 +87,13 @@ void get_column_names(ifstream* f, vector<string>* v){
 			temp = cols;
 		}
 
-		check_value(temp)==valueType::column;	// check correct column name
-		v->push_back(temp);	
+		if (check_value(temp) != valueType::column){ 	// check correct column name
+			throw "Incorrect column name";	
+		}
+		else {
+			v->push_back(temp);
+			add_to_set(temp, &columns);
+		}	
 	}
 }
 
@@ -120,6 +130,7 @@ void parse_lines(ifstream* f, vector<string>* v_c, vector<int>* v_r, map<Cell, i
 	*/
 	string temp, line;
 	set<string> rows;
+
 	while(getline(*f, line)){	
 		int value, row, count=0;
 		bool row_done = false;	// flag for number rows
@@ -129,10 +140,13 @@ void parse_lines(ifstream* f, vector<string>* v_c, vector<int>* v_r, map<Cell, i
 		}
 		size_t pos = line.find(",");
 		while(pos != string::npos){
-			pos = line.find(",");			
+			pos = line.find(",");
+			if (count > v_c->size() + 1){
+				throw "More values in the line than columns";
+			}			
 			if (pos != string::npos){
 				temp = line.substr(0, pos);	// current value of the string
-				line.erase(0, pos+1);	// delete from string value to temp
+				line.erase(0, pos + 1);	// delete from string value to temp
 
 				if(!row_done){
 					row_done = true;
@@ -140,11 +154,12 @@ void parse_lines(ifstream* f, vector<string>* v_c, vector<int>* v_r, map<Cell, i
 						throw "Name row must be a number";
 					}
 					row = stoi(temp);
-					if(row<1){
+					if(row < 1){
 						throw "Number rows not equal 0 and not less than 0";
 					}
 	
 					v_r->push_back(row);
+					add_to_set(temp, &rows);
 
 					count++;
 					continue;
@@ -157,10 +172,10 @@ void parse_lines(ifstream* f, vector<string>* v_c, vector<int>* v_r, map<Cell, i
 			switch(check_value(temp)){
 				case valueType::number :
 					value = stoi(temp);	// string to int
-					m_v->insert({{v_c->at(count-1), row}, value});	// addres cell and his value
+					m_v->insert({{v_c->at(count - 1), row}, value});	// addres cell and his value
 				break;
 				case valueType::formula:
-					m_f->insert({{v_c->at(count-1), row}, parse_formula(temp)});	// addres cell and his expression
+					m_f->insert({{v_c->at(count - 1), row}, parse_formula(temp)});	// addres cell and his expression
 				break;
 				default:
 					throw "Incorrect value";
@@ -168,10 +183,9 @@ void parse_lines(ifstream* f, vector<string>* v_c, vector<int>* v_r, map<Cell, i
 			}
 			count++;
 		}
-		if(count != v_c->size()+1)
-			throw "Number of columns and values are different";
-	
-    } 
+		if(count != v_c->size() + 1)
+			throw "Number of columns and values are different";	
+    }
 }
 
 Formula parse_formula(string str){
@@ -179,8 +193,10 @@ Formula parse_formula(string str){
 		parse expression for two arguments and operation
 	*/
 	int cell1 = 0, cell2, op = 0;
-	op = str.find_first_of("+-/*"); // position operation
-	for (int i=0; i<str.length(); i++){
+	for (int i=0; i < str.length(); i++){
+		if (str[i]=='+' || str[i]=='-' || str[i]=='/' || str[i]=='*'){
+			op = i;
+		}
 		if (str[i]>'0' && str[i]<='9')
 		{
 			if(cell1==0){
@@ -308,4 +324,13 @@ void print_result(map<Cell, int>* m, vector<string>* v_c, vector<int>* v_r){	// 
 		}		
 		cout<<endl;
 	}
+}
+
+// check for the same col name or num row
+void add_to_set(string str, set<string>* s){
+	auto tmp = s->find(str);
+	if (tmp != s->end()){
+		throw "Value repeats (column or row name)";
+	}
+	s->insert(str);
 }
